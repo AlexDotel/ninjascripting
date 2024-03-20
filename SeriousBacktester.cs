@@ -33,6 +33,9 @@ namespace NinjaTrader.NinjaScript.Strategies
 		private ATR atr;
 		private double bbw;
 		
+		private double beTriggerPrice;
+		private bool BreakEvenOn;
+		
 		protected override void OnStateChange()
 		{
 			if (State == State.SetDefaults)
@@ -57,22 +60,29 @@ namespace NinjaTrader.NinjaScript.Strategies
 				// Disable this property for performance gains in Strategy Analyzer optimizations
 				// See the Help Guide for additional information
 				IsInstantiatedOnEachOptimizationIteration	= true;
-				RsiPeriods					= 13;
-				RsiUpper					= 75;
-				RsiLower					= 20;
-				BBLength					= 30;
-				BBStdv						= 2;
-				BBWLength					= 30;
-				BBWStdv						= 2;
-				ATRLength					= 14;
-				BBWTrigger					= 0.8;
-				BBWHourTrigger				= 0.2;
-				StopLossPerATR				= 1.6;
-				TakeProfitPerATR			= 1.6;
-                Inicio 			= DateTime.Parse("21:30", System.Globalization.CultureInfo.InvariantCulture);
-                Fin 			= DateTime.Parse("21:30", System.Globalization.CultureInfo.InvariantCulture);
-				bbwSwitch 		= false;
-			}
+//				BBWLength			= 30;
+//				BBWStdv				= 2;
+//				BBWHourTrigger		= 0.2;
+				RsiPeriods			= 13;
+				RsiUpper			= 70;
+				RsiLower			= 30;
+				BBLength			= 24;
+				BBStdv				= 2;
+				ATRLength			= 14; //20 Funciona bien en 15m
+				BBWTrigger			= 0.8;
+				StopLossPerATR		= 1.6;
+				TakeProfitPerATR	= 1.6;
+				bbwSwitch 			= false;
+				Ventas 				= false;
+				Compras				= true;
+				BESwitch 			= false;
+				BETriggerATR 		= 1.6;
+				BEOffsetATR			= 0.6;
+                Inicio				= DateTime.Parse("14:00", System.Globalization.CultureInfo.InvariantCulture);
+                Fin 				= DateTime.Parse("18:30", System.Globalization.CultureInfo.InvariantCulture);
+			
+			
+			}			
 			else if (State == State.Configure)
 			{
 			}else if (State == State.DataLoaded)
@@ -113,74 +123,142 @@ namespace NinjaTrader.NinjaScript.Strategies
 			Draw.TextFixed(this, "ATR", "ATR: "+atr[0].ToString(), TextPosition.BottomRight);
 
 			//Logica
-			
-			//Compras CON BBW
-			if(Position.MarketPosition == MarketPosition.Flat && bbwSwitch){
-				if(VelaAlcista(0) && VelaEnvuelveHigh(0,1) && VelaBajista(1) && Low[1] < bb.Lower[1] && rsi[1] < RsiLower && bbw  < 0.8){ //CAMBIAR DESPUES DE IGUAL A MAYOR
-					EnterLong(DefaultQuantity, @"COMPRA");
-				}
-			}
-			
-			//Compras SIN BBW
-			if(Position.MarketPosition == MarketPosition.Flat && bbwSwitch == false){
-				if(VelaAlcista(0) && VelaEnvuelveHigh(0,1) && VelaBajista(1) && Low[1] < bb.Lower[1] && rsi[1] < RsiLower){
-					EnterLong(DefaultQuantity, @"COMPRA");
-				}
-			}
-			
-			//Ventas CON BBW
-			if(Position.MarketPosition == MarketPosition.Flat && bbwSwitch == false){
-				if(VelaBajista(0) && VelaEnvuelveLow(0,1) && VelaAlcista(1) && High[1] > bb.Upper[1] && rsi[1] > RsiUpper && bbw < 0.8){ //CAMBIAR DESPUES DE IGUAL A MAYOR
-					EnterShort(DefaultQuantity, @"VENTA");
-				}
-			}
-			
-			//Ventas CON BBW
 			if(Position.MarketPosition == MarketPosition.Flat){
-				if(VelaBajista(0) && VelaEnvuelveLow(0,1) && VelaAlcista(1) && High[1] > bb.Upper[1] && rsi[1] > RsiUpper){
-					EnterShort(DefaultQuantity, @"VENTA");
+				BreakEvenOn = false;
+				// Si no hay ordenes apagamos el BE
+			}
+			
+			if(Compras){
+				
+				//Compras CON BBW
+				if(Position.MarketPosition == MarketPosition.Flat && bbwSwitch){
+					if(VelaAlcista(0) && VelaEnvuelveHigh(0,1) && VelaBajista(1) && Low[1] < bb.Lower[1] && rsi[1] < RsiLower && bbw  < BBWTrigger){ //CAMBIAR DESPUES DE IGUAL A MAYOR
+						EnterLong(DefaultQuantity, @"COMPRA");
+					}
+				}
+				
+				//Compras SIN BBW
+				if(Position.MarketPosition == MarketPosition.Flat && bbwSwitch == false){
+					if(VelaAlcista(0) && VelaEnvuelveHigh(0,1) && VelaBajista(1) && Low[1] < bb.Lower[1] && rsi[1] < RsiLower){
+						EnterLong(DefaultQuantity, @"COMPRA");
+					}
+				}
+			}
+			
+			
+			
+			if(Ventas){
+				//Ventas CON BBW
+				if(Position.MarketPosition == MarketPosition.Flat && bbwSwitch){
+					if(VelaBajista(0) && VelaEnvuelveLow(0,1) && VelaAlcista(1) && High[1] > bb.Upper[1] && rsi[1] > RsiUpper && bbw < BBWTrigger){ //CAMBIAR DESPUES DE IGUAL A MAYOR
+						EnterShort(DefaultQuantity, @"VENTA");
+					}
+				}
+				
+				//Ventas SIN BBW
+				if(Position.MarketPosition == MarketPosition.Flat && bbwSwitch == false){
+					if(VelaBajista(0) && VelaEnvuelveLow(0,1) && VelaAlcista(1) && High[1] > bb.Upper[1] && rsi[1] > RsiUpper){
+						EnterShort(DefaultQuantity, @"VENTA");
+					}
 				}
 			}
 			
 			
 			//Order Management
-			
-			//SL y TG Compras
-			if(Position.MarketPosition == MarketPosition.Long){
-				//Calculamos la distancia
-				double targetsDistance = atr[1] * StopLossPerATR;
+			//Si hay ordenes Abiertas
+			if(Position.MarketPosition != MarketPosition.Flat){
+
+				//SL y TG Compras
+				if(Position.MarketPosition == MarketPosition.Long && BreakEvenOn == false){
+					
+					//Calculamos la distancia
+					double slDistance = atr[1] * StopLossPerATR;
+					double tpDistance = atr[1] * TakeProfitPerATR;
+					
+					//Calculamos los targets
+					double slPrice = Position.AveragePrice - slDistance;
+					double tpPrice = Position.AveragePrice + tpDistance;
+					
+					//Colocamos los targets
+					ExitLongStopMarket(DefaultQuantity, slPrice, @"SL COMPRA", @"COMPRA");
+					ExitLongLimit(DefaultQuantity, tpPrice, @"TP COMPRA", @"COMPRA");
+					
+					// Seteamos el BE Offset
+					BreakEvenOn = false;
+					double beTriggerDistance = atr[1] * BETriggerATR;
+					beTriggerPrice = Position.AveragePrice + beTriggerDistance; 
+					// Seteamos el precio trigger para esta orden
+					
+				}
 				
-				//Calculamos los targets
-				double slPrice = Position.AveragePrice - targetsDistance;
-				double tpPrice = Position.AveragePrice + targetsDistance;
+				// Activando BE Compras
+				if(Position.MarketPosition == MarketPosition.Long && Close[0] > beTriggerPrice && BESwitch == true){ // Cruza por encima el precio Trigger
+					
+					double beOffsetDistance = atr[1] * BEOffsetATR;
+					double beOffsetPrice = Position.AveragePrice + beOffsetDistance;
+					
+					double tpDistance = atr[1] * TakeProfitPerATR;
+					double tpPrice = Position.AveragePrice + tpDistance;
+					
+					ExitLongStopMarket(Position.AveragePrice + beOffsetPrice, @"BE COMPRA", @"COMPRA");
+					ExitLongLimit(DefaultQuantity, tpPrice, @"TP COMPRA", @"COMPRA");
+					
+					//Dibujamos los targets
+					Draw.Dot(this, "SL ATR LONG", true, 1, beOffsetPrice, Brushes.Red);
+					Draw.Dot(this, "TP ATR LONG", true, 1, tpPrice, Brushes.DodgerBlue);
+					
+					BreakEvenOn = true;
+					
+				}
 				
-				//Dibujamos los targets
-//				Draw.Dot(this, "SL ATR LONG", true, 1, slPrice, Brushes.Red);
-//				Draw.Dot(this, "TP ATR LONG", true, 1, tpPrice, Brushes.DodgerBlue);
 				
-				//Colocamos los targets
-				ExitLongStopMarket(DefaultQuantity, slPrice, @"SL COMPRA", @"COMPRA");
-				ExitLongLimit(DefaultQuantity, tpPrice, @"TP COMPRA", @"COMPRA");
+				//SL y TG Ventas
+				if(Position.MarketPosition == MarketPosition.Short && BreakEvenOn == false){
+					
+					//Calculamos la distancia
+					double slDistance = atr[1] * StopLossPerATR;
+					double tpDistance = atr[1] * TakeProfitPerATR;
+					
+					//Calculamos los targets
+					double slPrice = Position.AveragePrice + slDistance;
+					double tpPrice = Position.AveragePrice - tpDistance;
+					
+					//Colocamos los targets
+					ExitShortStopMarket(DefaultQuantity, slPrice, @"SL VENTA", @"VENTA");
+					ExitShortLimit(DefaultQuantity, tpPrice, @"TP VENTA", @"VENTA");
+						
+					//Dibujamos los targets
+					Draw.Dot(this, "SL ATR LONG", true, 1, slPrice, Brushes.Red);
+					Draw.Dot(this, "TP ATR LONG", true, 1, tpPrice, Brushes.DodgerBlue);
+					
+					// Seteamos el BE Offset
+					BreakEvenOn = false;
+					double beTriggerDistance = atr[1] * BETriggerATR;
+					beTriggerPrice = Position.AveragePrice - beTriggerDistance; 
+					// Seteamos el precio trigger para esta orden
+					
+				}
+				
+				
+				// Activando BE Ventas
+				if(Position.MarketPosition == MarketPosition.Short && Close[0] < beTriggerPrice && BESwitch == true){ // Cruza por debajo el precio Trigger
+										
+					double beOffsetDistance = atr[1] * BEOffsetATR;
+					double beOffsetPrice = Position.AveragePrice - beOffsetDistance;
+					
+					double tpDistance = atr[1] * TakeProfitPerATR;
+					double tpPrice = Position.AveragePrice - tpDistance;
+					
+					ExitShortStopMarket(Position.AveragePrice - beOffsetPrice, @"BE VENTA", @"VENTA");
+					ExitShortLimit(DefaultQuantity, tpPrice, @"TP VENTA", @"VENTA");
+					BreakEvenOn = true;
+					
+				}
+				
+					
 			}
 			
 			
-			//SL y TG Ventas
-			if(Position.MarketPosition == MarketPosition.Long){
-				//Calculamos la distancia
-				double targetsDistance = atr[1] * StopLossPerATR;
-				
-				//Calculamos los targets
-				double slPrice = Position.AveragePrice + targetsDistance;
-				double tpPrice = Position.AveragePrice - targetsDistance;
-				
-				//Dibujamos los targets
-//				Draw.Dot(this, "SL ATR LONG", true, 1, slPrice, Brushes.Red);
-//				Draw.Dot(this, "TP ATR LONG", true, 1, tpPrice, Brushes.DodgerBlue);
-				
-				//Colocamos los targets
-				ExitShortStopMarket(DefaultQuantity, slPrice, @"SL VENTA", @"VENTA");
-				ExitShortLimit(DefaultQuantity, tpPrice, @"TP VENTA", @"VENTA");
-			}
 			
 			
 			
@@ -235,21 +313,9 @@ namespace NinjaTrader.NinjaScript.Strategies
 		{ get; set; }
 
 		[NinjaScriptProperty]
-		[Range(1, int.MaxValue)]
+		[Range(0.1, double.MaxValue)]
 		[Display(Name="BBStdv", Order=5, GroupName="Parameters")]
 		public int BBStdv
-		{ get; set; }
-
-		[NinjaScriptProperty]
-		[Range(1, int.MaxValue)]
-		[Display(Name="BBWLength", Order=6, GroupName="Parameters")]
-		public int BBWLength
-		{ get; set; }
-
-		[NinjaScriptProperty]
-		[Range(1, int.MaxValue)]
-		[Display(Name="BBWStdv", Order=7, GroupName="Parameters")]
-		public int BBWStdv
 		{ get; set; }
 
 		[NinjaScriptProperty]
@@ -259,14 +325,21 @@ namespace NinjaTrader.NinjaScript.Strategies
 		{ get; set; }
 
 		[NinjaScriptProperty]
-		[Range(1, float.MaxValue)]
+		[Range(0.1, double.MaxValue)]
 		[Display(Name="BBWTrigger", Order=9, GroupName="Parameters")]
 		public double BBWTrigger
 		{ get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name="BBWHourTrigger", Order=10, GroupName="Parameters")]
-		public double BBWHourTrigger
+		[Range(0.1, double.MaxValue)]
+		[Display(Name="BE Trigger ATR", Order=11, GroupName="Parameters")]
+		public double BETriggerATR
+		{ get; set; }
+
+		[NinjaScriptProperty]
+		[Range(0.1, double.MaxValue)]
+		[Display(Name="BE Offset ATR", Order=11, GroupName="Parameters")]
+		public double BEOffsetATR
 		{ get; set; }
 
 		[NinjaScriptProperty]
@@ -283,13 +356,13 @@ namespace NinjaTrader.NinjaScript.Strategies
 		
         [NinjaScriptProperty]
         [PropertyEditor("NinjaTrader.Gui.Tools.TimeEditorKey")]
-        [Display(Name = "Inicio", Description = "Hora de inicio", Order = 20, GroupName = "Parameters")]
+        [Display(Name = "Inicio", Description = "Hora de inicio", Order = 19, GroupName = "Parameters")]
         public DateTime Inicio
         { get; set; }
 
         [NinjaScriptProperty]
         [PropertyEditor("NinjaTrader.Gui.Tools.TimeEditorKey")]
-        [Display(Name = "Fin", Description = "Hora Final", Order = 19, GroupName = "Parameters")]
+        [Display(Name = "Fin", Description = "Hora Final", Order = 20, GroupName = "Parameters")]
         public DateTime Fin
         { get; set; }
 
@@ -297,6 +370,38 @@ namespace NinjaTrader.NinjaScript.Strategies
         [Display(Name = "BBW Switch", Description = "BBW Switch", Order = 0, GroupName = "Parameters")]
 		public bool bbwSwitch
 		{ get; set; }
+
+        [NinjaScriptProperty]
+        [Display(Name = "BE Switch", Description = "BES witch", Order = 0, GroupName = "Parameters")]
+		public bool BESwitch
+		{ get; set; }
+
+        [NinjaScriptProperty]
+        [Display(Name = "Compras", Description = "Compras", Order = 0, GroupName = "Parameters")]
+		public bool Compras
+		{ get; set; }
+
+        [NinjaScriptProperty]
+        [Display(Name = "Ventas", Description = "Ventas", Order = 0, GroupName = "Parameters")]
+		public bool Ventas
+		{ get; set; }
+		
+//		[NinjaScriptProperty]
+//		[Range(1, int.MaxValue)]
+//		[Display(Name="BBWLength", Order=6, GroupName="Parameters")]
+//		public int BBWLength
+//		{ get; set; }
+
+//		[NinjaScriptProperty]
+//		[Range(1, int.MaxValue)]
+//		[Display(Name="BBWStdv", Order=7, GroupName="Parameters")]
+//		public int BBWStdv
+//		{ get; set; }
+
+//		[NinjaScriptProperty]
+//		[Display(Name="BBWHourTrigger", Order=10, GroupName="Parameters")]
+//		public double BBWHourTrigger
+//		{ get; set; }
 		#endregion
 
 	}
