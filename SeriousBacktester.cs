@@ -30,7 +30,8 @@ namespace NinjaTrader.NinjaScript.Strategies
 		
 		private RSI rsi;
 		private Bollinger bb;
-//		private BBW bbw;
+		private ATR atr;
+		private double bbw;
 		
 		protected override void OnStateChange()
 		{
@@ -60,29 +61,153 @@ namespace NinjaTrader.NinjaScript.Strategies
 				RsiUpper					= 75;
 				RsiLower					= 20;
 				BBLength					= 30;
-				BBStdv					= 2;
+				BBStdv						= 2;
 				BBWLength					= 30;
-				BBWStdv					= 2;
+				BBWStdv						= 2;
 				ATRLength					= 14;
 				BBWTrigger					= 0.8;
-				BBWHourTrigger					= 0.2;
-				StopLossPerATR					= 1.6;
-				TakeProfitPerATR					= 1.6;
+				BBWHourTrigger				= 0.2;
+				StopLossPerATR				= 1.6;
+				TakeProfitPerATR			= 1.6;
+                Inicio 			= DateTime.Parse("21:30", System.Globalization.CultureInfo.InvariantCulture);
+                Fin 			= DateTime.Parse("21:30", System.Globalization.CultureInfo.InvariantCulture);
+				bbwSwitch 		= false;
 			}
 			else if (State == State.Configure)
 			{
+			}else if (State == State.DataLoaded)
+			{	
+				bb = Bollinger(BBStdv, BBLength);
+				bb.Plots[0].Brush = Brushes.Snow;
+				bb.Plots[1].Brush = Brushes.Snow;
+				bb.Plots[2].Brush = Brushes.Snow;					
+				AddChartIndicator(bb);
+				
+				rsi = RSI(Close, Convert.ToInt32(RsiPeriods), 3);
+				rsi.Plots[0].Brush = Brushes.Snow;
+				rsi.Plots[1].Brush = Brushes.Transparent;						
+				AddChartIndicator(rsi);
+				
+				atr = ATR(ATRLength);
+				atr.Plots[0].Brush = Brushes.Snow;					
+				AddChartIndicator(atr);
+				
+				
 			}
 		}
 
 		protected override void OnBarUpdate()
 		{
 			
+			if(CurrentBar < 10) return;
+			
+			//Indicador BBW
+			double midValue = bb.Middle[0];
+			double upperValue = bb.Upper[0];
+			double lowerValue = bb.Lower[0];
+			bbw = Math.Round((upperValue - lowerValue) * 0.1, 1);
+			Print("Ancho de las bandas: " + bbw);
+			Draw.TextFixed(this, "Ancho de las bandas", "BBW: "+bbw.ToString(), TextPosition.TopRight);
+			
+			//Mostrando ATR
+			Draw.TextFixed(this, "ATR", "ATR: "+atr[0].ToString(), TextPosition.BottomRight);
+
 			//Logica
-			if(Position.MarketPosition == MarketPosition.Flat){
-				
+			
+			//Compras CON BBW
+			if(Position.MarketPosition == MarketPosition.Flat && bbwSwitch){
+				if(VelaAlcista(0) && VelaEnvuelveHigh(0,1) && VelaBajista(1) && Low[1] < bb.Lower[1] && rsi[1] < RsiLower && bbw  < 0.8){ //CAMBIAR DESPUES DE IGUAL A MAYOR
+					EnterLong(DefaultQuantity, @"COMPRA");
+				}
 			}
 			
+			//Compras SIN BBW
+			if(Position.MarketPosition == MarketPosition.Flat && bbwSwitch == false){
+				if(VelaAlcista(0) && VelaEnvuelveHigh(0,1) && VelaBajista(1) && Low[1] < bb.Lower[1] && rsi[1] < RsiLower){
+					EnterLong(DefaultQuantity, @"COMPRA");
+				}
+			}
+			
+			//Ventas CON BBW
+			if(Position.MarketPosition == MarketPosition.Flat && bbwSwitch == false){
+				if(VelaBajista(0) && VelaEnvuelveLow(0,1) && VelaAlcista(1) && High[1] > bb.Upper[1] && rsi[1] > RsiUpper && bbw < 0.8){ //CAMBIAR DESPUES DE IGUAL A MAYOR
+					EnterShort(DefaultQuantity, @"VENTA");
+				}
+			}
+			
+			//Ventas CON BBW
+			if(Position.MarketPosition == MarketPosition.Flat){
+				if(VelaBajista(0) && VelaEnvuelveLow(0,1) && VelaAlcista(1) && High[1] > bb.Upper[1] && rsi[1] > RsiUpper){
+					EnterShort(DefaultQuantity, @"VENTA");
+				}
+			}
+			
+			
+			//Order Management
+			
+			//SL y TG Compras
+			if(Position.MarketPosition == MarketPosition.Long){
+				//Calculamos la distancia
+				double targetsDistance = atr[1] * StopLossPerATR;
+				
+				//Calculamos los targets
+				double slPrice = Position.AveragePrice - targetsDistance;
+				double tpPrice = Position.AveragePrice + targetsDistance;
+				
+				//Dibujamos los targets
+//				Draw.Dot(this, "SL ATR LONG", true, 1, slPrice, Brushes.Red);
+//				Draw.Dot(this, "TP ATR LONG", true, 1, tpPrice, Brushes.DodgerBlue);
+				
+				//Colocamos los targets
+				ExitLongStopMarket(DefaultQuantity, slPrice, @"SL COMPRA", @"COMPRA");
+				ExitLongLimit(DefaultQuantity, tpPrice, @"TP COMPRA", @"COMPRA");
+			}
+			
+			
+			//SL y TG Ventas
+			if(Position.MarketPosition == MarketPosition.Long){
+				//Calculamos la distancia
+				double targetsDistance = atr[1] * StopLossPerATR;
+				
+				//Calculamos los targets
+				double slPrice = Position.AveragePrice + targetsDistance;
+				double tpPrice = Position.AveragePrice - targetsDistance;
+				
+				//Dibujamos los targets
+//				Draw.Dot(this, "SL ATR LONG", true, 1, slPrice, Brushes.Red);
+//				Draw.Dot(this, "TP ATR LONG", true, 1, tpPrice, Brushes.DodgerBlue);
+				
+				//Colocamos los targets
+				ExitShortStopMarket(DefaultQuantity, slPrice, @"SL VENTA", @"VENTA");
+				ExitShortLimit(DefaultQuantity, tpPrice, @"TP VENTA", @"VENTA");
+			}
+			
+			
+			
 		}
+		
+		private bool VelaBajista(int indice){
+			if (Close[indice] < Open[indice]){return true;}
+			else{return false;}
+		}
+		
+		private bool VelaAlcista(int indice){
+			if (Close[indice] > Open[indice]){return true;}
+			else{return false;}
+		}
+		
+		private bool VelaEnvuelveHigh(int indiceActual, int indicePrevio){
+			if (Close[indiceActual] > High[indicePrevio]){return true;}
+			else{return false;}
+		}
+		
+		private bool VelaEnvuelveLow(int indiceActual, int indicePrevio){
+			if (Close[indiceActual] < Low[indicePrevio]){return true;}
+			else{return false;}
+		}
+		
+		
+
 
 		#region Properties
 		[NinjaScriptProperty]
@@ -134,7 +259,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 		{ get; set; }
 
 		[NinjaScriptProperty]
-		[Range(1, double.MaxValue)]
+		[Range(1, float.MaxValue)]
 		[Display(Name="BBWTrigger", Order=9, GroupName="Parameters")]
 		public double BBWTrigger
 		{ get; set; }
@@ -154,6 +279,23 @@ namespace NinjaTrader.NinjaScript.Strategies
 		[Range(0.1, double.MaxValue)]
 		[Display(Name="TakeProfitPerATR", Order=12, GroupName="Parameters")]
 		public double TakeProfitPerATR
+		{ get; set; }
+		
+        [NinjaScriptProperty]
+        [PropertyEditor("NinjaTrader.Gui.Tools.TimeEditorKey")]
+        [Display(Name = "Inicio", Description = "Hora de inicio", Order = 20, GroupName = "Parameters")]
+        public DateTime Inicio
+        { get; set; }
+
+        [NinjaScriptProperty]
+        [PropertyEditor("NinjaTrader.Gui.Tools.TimeEditorKey")]
+        [Display(Name = "Fin", Description = "Hora Final", Order = 19, GroupName = "Parameters")]
+        public DateTime Fin
+        { get; set; }
+
+        [NinjaScriptProperty]
+        [Display(Name = "BBW Switch", Description = "BBW Switch", Order = 0, GroupName = "Parameters")]
+		public bool bbwSwitch
 		{ get; set; }
 		#endregion
 
