@@ -42,7 +42,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 			{
 				Description									= @"https://www.youtube.com/watch?v=6CdS2FCb29I";
 				Name										= "SeriousBacktester";
-				Calculate									= Calculate.OnBarClose;
+				Calculate									= Calculate.OnEachTick; //------//
 				EntriesPerDirection							= 1;
 				EntryHandling								= EntryHandling.AllEntries;
 				IsExitOnSessionCloseStrategy				= true;
@@ -76,10 +76,12 @@ namespace NinjaTrader.NinjaScript.Strategies
 				Ventas 				= false;
 				Compras				= true;
 				BESwitch 			= false;
-				BETriggerATR 		= 1.6;
+				BETriggerATR 		= 1.0;
 				BEOffsetATR			= 0.6;
                 Inicio				= DateTime.Parse("14:00", System.Globalization.CultureInfo.InvariantCulture);
                 Fin 				= DateTime.Parse("18:30", System.Globalization.CultureInfo.InvariantCulture);
+				TradeMaxLose		= 800;
+				SalvavidasPMSwitch  = false;
 			
 			
 			}			
@@ -189,6 +191,9 @@ namespace NinjaTrader.NinjaScript.Strategies
 					beTriggerPrice = Position.AveragePrice + beTriggerDistance; 
 					// Seteamos el precio trigger para esta orden
 					
+//					Salvavidas("Compra", slPrice);//--------------//
+					if (SalvavidasPMSwitch) SalvavidasPorPerdidaMaxima();
+					
 				}
 				
 				// Activando BE Compras
@@ -197,7 +202,12 @@ namespace NinjaTrader.NinjaScript.Strategies
 					double beOffsetDistance = atr[1] * BEOffsetATR;
 					double beOffsetPrice = Position.AveragePrice + beOffsetDistance;
 					
+					//Calculamos la distancia
+					double slDistance = atr[1] * StopLossPerATR;
 					double tpDistance = atr[1] * TakeProfitPerATR;
+					
+					//Calculamos los targets
+					double slPrice = Position.AveragePrice - slDistance;
 					double tpPrice = Position.AveragePrice + tpDistance;
 					
 					ExitLongStopMarket(Position.AveragePrice + beOffsetPrice, @"BE COMPRA", @"COMPRA");
@@ -208,8 +218,16 @@ namespace NinjaTrader.NinjaScript.Strategies
 					Draw.Dot(this, "TP ATR LONG", true, 1, tpPrice, Brushes.DodgerBlue);
 					
 					BreakEvenOn = true;
-					
+//					Salvavidas("Compra", slPrice);//--------------//
+					if (SalvavidasPMSwitch) SalvavidasPorPerdidaMaxima();
 				}
+				
+				
+				
+				
+				
+				
+				
 				
 				
 				//SL y TG Ventas
@@ -237,6 +255,9 @@ namespace NinjaTrader.NinjaScript.Strategies
 					beTriggerPrice = Position.AveragePrice - beTriggerDistance; 
 					// Seteamos el precio trigger para esta orden
 					
+//					Salvavidas("Venta", slPrice);//--------------//
+					if (SalvavidasPMSwitch) SalvavidasPorPerdidaMaxima();
+					
 				}
 				
 				
@@ -246,12 +267,25 @@ namespace NinjaTrader.NinjaScript.Strategies
 					double beOffsetDistance = atr[1] * BEOffsetATR;
 					double beOffsetPrice = Position.AveragePrice - beOffsetDistance;
 					
+					//Calculamos la distancia
+					double slDistance = atr[1] * StopLossPerATR;
 					double tpDistance = atr[1] * TakeProfitPerATR;
+					
+					//Calculamos los targets
+					double slPrice = Position.AveragePrice + slDistance;
 					double tpPrice = Position.AveragePrice - tpDistance;
 					
 					ExitShortStopMarket(Position.AveragePrice - beOffsetPrice, @"BE VENTA", @"VENTA");
 					ExitShortLimit(DefaultQuantity, tpPrice, @"TP VENTA", @"VENTA");
+					
+					//Dibujamos los targets
+					Draw.Dot(this, "SL ATR LONG", true, 1, beOffsetPrice, Brushes.Red);
+					Draw.Dot(this, "TP ATR LONG", true, 1, tpPrice, Brushes.DodgerBlue);
+					
+					
 					BreakEvenOn = true;
+//					Salvavidas("Venta", slPrice);//--------------//
+					if (SalvavidasPMSwitch) SalvavidasPorPerdidaMaxima();
 					
 				}
 				
@@ -282,6 +316,32 @@ namespace NinjaTrader.NinjaScript.Strategies
 		private bool VelaEnvuelveLow(int indiceActual, int indicePrevio){
 			if (Close[indiceActual] < Low[indicePrevio]){return true;}
 			else{return false;}
+		}
+		
+		
+		
+		//-----------------------------------------//
+		// SALVAVIDAS
+		private void SalvavidasSuperacionSL(string tipoOperacion, double slPrice){
+			
+			if(tipoOperacion == "Compra" && Close[0] < slPrice ){
+				ExitLong(DefaultQuantity, @"SALVAVIDAS COMPRA",  @"COMPRA");
+			}else if(tipoOperacion == "Venta" && Close[0] > slPrice ){
+				ExitShort(DefaultQuantity, @"SALVAVIDAS VENTA",  @"VENTA");
+			}
+		}
+		
+		//-----------------------------------------//
+		// SALVAVIDAS
+		private void SalvavidasPorPerdidaMaxima(){
+			
+			if(Position.GetUnrealizedProfitLoss(PerformanceUnit.Currency, Close[0]) > TradeMaxLose && Position.MarketPosition == MarketPosition.Long){
+				ExitLong(DefaultQuantity, @"S. PERDIDA COMPRA",  @"COMPRA");
+			}
+			
+			if(Position.GetUnrealizedProfitLoss(PerformanceUnit.Currency, Close[0]) > TradeMaxLose && Position.MarketPosition == MarketPosition.Short){
+				ExitShort(DefaultQuantity, @"S. PERDIDA VENTA",  @"VENTA");
+			}
 		}
 		
 		
@@ -332,13 +392,13 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 		[NinjaScriptProperty]
 		[Range(0.1, double.MaxValue)]
-		[Display(Name="BE Trigger ATR", Order=11, GroupName="Parameters")]
+		[Display(Name="BE Trigger ATR", Order=17, GroupName="Parameters")]
 		public double BETriggerATR
 		{ get; set; }
 
 		[NinjaScriptProperty]
 		[Range(0.1, double.MaxValue)]
-		[Display(Name="BE Offset ATR", Order=11, GroupName="Parameters")]
+		[Display(Name="BE Offset ATR", Order=18, GroupName="Parameters")]
 		public double BEOffsetATR
 		{ get; set; }
 
@@ -377,13 +437,23 @@ namespace NinjaTrader.NinjaScript.Strategies
 		{ get; set; }
 
         [NinjaScriptProperty]
-        [Display(Name = "Compras", Description = "Compras", Order = 0, GroupName = "Parameters")]
+        [Display(Name = "Compras", Description = "Habilitar Compras", Order = 0, GroupName = "Parameters")]
 		public bool Compras
 		{ get; set; }
 
         [NinjaScriptProperty]
-        [Display(Name = "Ventas", Description = "Ventas", Order = 0, GroupName = "Parameters")]
+        [Display(Name = "Ventas", Description = "Habilitar Ventas", Order = 0, GroupName = "Parameters")]
 		public bool Ventas
+		{ get; set; }
+
+        [NinjaScriptProperty]
+        [Display(Name = "Salvavivas PM", Description = "Salvavivas Perdida Maxima", Order = 1, GroupName = "Parameters")]
+		public bool SalvavidasPMSwitch
+		{ get; set; }
+		
+		[NinjaScriptProperty]
+		[Display(Name="Trade Max Lose", Order=8, GroupName="Parameters")]
+		public int TradeMaxLose
 		{ get; set; }
 		
 //		[NinjaScriptProperty]
